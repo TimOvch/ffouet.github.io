@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Математическая статистика — Карточки</title>
+
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      }
+    };
+  </script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+      background: #f9f9f9;
+      color: #333;
+    }
+    .screen { display: none; }
+    .active { display: block; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .question { font-size: 1.2em; margin-bottom: 16px; }
+    .progress {
+      color: #666;
+      font-size: 0.95em;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .answer {
+      display: none;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px dashed #ddd;
+      color: #0066cc;
+      text-align: left;
+    }
+    button {
+      background: #007aff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      margin: 6px;
+      font-size: 1em;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button.correct { background: #34c759; }
+    button.incorrect { background: #ff3b30; }
+    .topic-btn { background: #5e5ce6; }
+    .summary { font-size: 1.2em; margin: 20px 0; }
+    .poop {
+      position: fixed;
+      font-size: 2em;
+      z-index: 1000;
+      pointer-events: none;
+      animation: poopFly 5s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+    }
+    @keyframes poopFly {
+      0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+      50%  { transform: translate(100px, -150px) rotate(360deg); }
+      100% { transform: translate(200px, -300px) rotate(720deg); opacity: 0; }
+    }
+    @keyframes fadeInOut {
+      0%   { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      20%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+      80%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+      100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Экран выбора темы -->
+<div id="screen-select" class="screen active">
+  <h2>Выбери тему</h2>
+  <button class="topic-btn" onclick="startSession('all')">Все карточки</button>
+  <button class="topic-btn" onclick="startSession('Точечное оценивание')">Точечное оценивание</button>
+  <button class="topic-btn" onclick="startSession('Доверительное оценивание')">Доверительное оценивание</button>
+  <button class="topic-btn" onclick="startSession('Проверка гипотез')">Проверка гипотез</button>
+  <button class="topic-btn" onclick="startSession('Линейная регрессия')">Линейная регрессия</button>
+  <button class="topic-btn" onclick="startSession('Дисперсионный анализ (ANOVA)')">Дисперсионный анализ (ANOVA)</button>
+  <button class="topic-btn" onclick="showScreen('screen-all-cards')">Просмотреть все карточки</button>
+</div>
+
+<!-- Экран карточки -->
+<div id="screen-card" class="screen">
+  <button onclick="resetSession()" style="float:right; background:#ff9500; font-size:0.9em; padding:6px 12px;">🔄 Начать заново</button>
+  <div class="card">
+    <div class="progress" id="progress">Вопрос 1 из 5</div>
+    <div class="question" id="question">...</div>
+    <div class="answer" id="answer"></div>
+    <button onclick="toggleAnswer()">Показать ответ</button>
+  </div>
+  <button class="correct" onclick="handleResponse(true)">Правильно ✅</button>
+  <button class="incorrect" onclick="handleResponse(false)">Неправильно ❌</button>
+</div>
+
+<!-- Экран результата -->
+<div id="screen-summary" class="screen">
+  <div class="summary" id="summary-text"></div>
+  <button onclick="showScreen('screen-select')">Вернуться к выбору</button>
+</div>
+
+<!-- Экран со всеми карточками -->
+<div id="screen-all-cards" class="screen">
+  <h2>Все карточки</h2>
+  <button onclick="showScreen('screen-select')" style="margin-bottom: 20px;">← Назад к выбору темы</button>
+  <div id="all-cards-container"></div>
+</div>
+
+<script>
+function renderAllCards() {
+  const container = document.getElementById('all-cards-container');
+  container.innerHTML = '';
+  for (const [topic, cards] of Object.entries(cardGroups)) {
+    if (topic === 'all') continue;
+    const topicHeader = document.createElement('h3');
+    topicHeader.textContent = topic;
+    topicHeader.style.marginTop = '32px';
+    topicHeader.style.color = '#5e5ce6';
+    container.appendChild(topicHeader);
+    cards.forEach(card => {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'card';
+      const qEl = document.createElement('div');
+      qEl.className = 'question';
+      qEl.textContent = card.q;
+      const aEl = document.createElement('div');
+      aEl.className = 'answer';
+      aEl.innerHTML = card.a;
+      aEl.style.display = 'block';
+      cardEl.appendChild(qEl);
+      cardEl.appendChild(aEl);
+      container.appendChild(cardEl);
+    });
+  }
+  MathJax.typesetPromise();
+}
+document.addEventListener('click', (e) => {
+  if (e.target.matches('[onclick*="screen-all-cards"]')) {
+    setTimeout(renderAllCards, 100);
+  }
+});
+</script>
+
+<script>
+  // === КАРТОЧКИ ПО ТЕМАМ ===
+  const cardGroups = {
+    "Точечное оценивание": [
+      {
+        q: "1. Эмпирическая функция распределения. Теоремы Гливенко–Кантелли и Колмогорова",
+        a: "<strong>TL;DR:</strong> $F_n(x) = \\frac{1}{n}\\sum 1\\{X_i &lt; x\\}$ — несмещённая оценка $F$; равномерно сходится к $F$ п.н.; $\\sqrt{n}D_n \\Rightarrow K$.<br><br><strong>Формально:</strong><br><strong>Эмпирическая ФР:</strong> $$F_n(x) = \\frac{1}{n}\\sum_{i=1}^n 1\\{X_i &lt; x\\},$$ где $1_A = 1$, если $A$ выполнено, и $0$ иначе.<br><strong>Теорема (Гливенко–Кантелли).</strong> Пусть $X_1, \\ldots, X_n$ — выборка из распределения $P_\\theta$; $F(x)$ и $F_n(x)$ — теоретическая и эмпирическая ФР. Тогда с вероятностью 1 $$\\lim_{n\\to\\infty} D_n(X) = \\lim_{n\\to\\infty} \\sup_{x} |F_n(x) - F(x)| \\to 0.$$<strong>Теорема (Колмогоров).</strong> Если $F(x)$ непрерывна, то для любого $t &gt; 0$ $$\\lim_{n\\to\\infty} \\mathbb{P}(\\sqrt{n} D_n \\leq t) = K(t) = \\sum_{j=-\\infty}^{\\infty} (-1)^j e^{-2j^2 t^2}.$$ Функция $K(t)$ — <em>функция распределения Колмогорова</em>. Статистика $D_n = \\sup_x|F_n(x)-F(x)|$ — <em>статистика Колмогорова</em>."
+      },
+      {
+        q: "2. Выборочные числовые характеристики: выборочное среднее, дисперсия, медиана, квантиль",
+        a: "<strong>TL;DR:</strong> Принцип подстановки: $\\alpha(F_n)$ вместо $\\alpha(F)$. Для I типа — функция от моментов, для II типа — непрерывный функционал.<br><br><strong>Формально:</strong><br>Выборочные характеристики (принцип подстановки $F \\to F_n$):<br>— Мат. ожидание: $\\bar X = \\frac{1}{n}\\sum_{i=1}^n X_i$<br>— Дисперсия: $s^2 = \\overline{X^2} - \\bar X^2 = \\frac{1}{n}\\sum_{i=1}^n (X_i - \\bar X)^2$<br>— $p$-квантиль: $Z_{n,p} = X_{([np]+1)}$ при $np\\notin\\mathbb{Z}$; $[X_{(np)}, X_{(np+1)}]$ при $np\\in\\mathbb{Z}$.<br><strong>Теорема (состоятельность).</strong> Если $\\alpha(F)$ — характеристика I или II типа, то с вероятностью 1 $$\\alpha(F_n) \\xrightarrow[n\\to\\infty]{} \\alpha(F).$$<strong>Асимптотическая нормальность (I тип):</strong> при условиях $(i)$ $E_F|g_i(X)|^2 &lt; \\infty$, $(ii)$ $H$ непрерывно дифференцируема: $$\\sqrt{n}(\\alpha(F_n) - \\alpha(F)) \\Rightarrow \\mathcal{N}(0, \\sigma_\\alpha^2).$$"
+      },
+      {
+        q: "3. Непараметрические оценки плотности: гистограмма и ядерная оценка",
+        a: "<strong>TL;DR:</strong> Гистограмма: $H(x) = \\nu_j/(nh)$ на интервале $I_j$; оптимальный шаг $h_\\text{opt} \\sim n^{-1/3}$. Ядерная оценка сглаживает горбиком $K$.<br><br><strong>Формально:</strong><br><strong>Гистограмма (абсолютно непрерывный случай).</strong> Прямую разбивают на интервалы $\\{I_j\\}$ длины $h &gt; 0$; $\\nu_j$ — число наблюдений в $j$-м интервале. Функция $$H(x) = \\frac{\\nu_j}{nh},\\quad x\\in I_j$$ называется <em>гистограммой</em>. Площадь под $H$ равна 1.<br>Граница среднеквадратичной ошибки: $$E_F(H(x;h) - p(x))^2 \\leq d^2 h^2 + \\frac{p_{\\max}}{nh} + \\frac{p_{\\max}^2}{n},$$ откуда $h_\\text{opt} = (p_{\\max}/(nd^2))^{1/3}$.<br><strong>Ядерная оценка плотности:</strong> $$f_n(x) = (nh_n)^{-1}\\sum_{i=1}^n K\\!\\left(\\frac{x - X_i}{h_n}\\right),$$ где $K$ — неотрицательная функция ограниченной вариации (ядро), обычно симметричная."
+      },
+      {
+        q: "4. Распределения χ², Стьюдента, Фишера–Снедекора. Лемма Фишера",
+        a: "<strong>TL;DR:</strong> $\\chi^2_n = \\sum\\xi_i^2$; $S_n = \\xi_0/\\sqrt{\\chi^2_n/n}$; $F_{n,m} = (\\chi^2_n/n)/(\\chi^2_m/m)$. Лемма Фишера: $\\bar X$ и $s^2$ независимы, $ns^2/\\sigma^2 \\sim \\chi^2_{n-1}$.<br><br><strong>Формально:</strong><br>Пусть $\\xi_0, \\xi_1, \\ldots, \\xi_n \\sim \\mathcal{N}(0,1)$ независимы. Тогда:<br>— $\\chi_n^2 = \\sum_{i=1}^n \\xi_i^2$ — <em>хи-квадрат с $n$ степенями свободы</em>;<br>— $S_n = \\xi_0/\\sqrt{\\chi_n^2/n}$ — <em>распределение Стьюдента с $n$ ст.св.</em>;<br>— $F_{n,m} = (\\chi_n^2/n)/(\\chi_m^2/m)$ — <em>распределение Фишера–Снедекора</em>.<br><strong>Теорема (Лемма Фишера).</strong> Пусть $X_1, \\ldots, X_n$ — выборка из $\\mathcal{N}(a,\\sigma^2)$. Тогда:<br>$(i)$ $\\sqrt{n}(\\bar X - a)/\\sigma \\in \\mathcal{N}(0,1)$;<br>$(ii)$ $\\bar X$ и $s^2$ — независимые статистики;<br>$(iii)$ $ns^2/\\sigma^2 \\sim \\chi^2_{n-1}$;<br>$(iv)$ $\\sqrt{n-1}(\\bar X - a)/s \\sim S_{n-1}$."
+      },
+      {
+        q: "5. Функция правдоподобия и оценка максимального правдоподобия",
+        a: "<strong>TL;DR:</strong> $L(x;\\theta) = p_\\theta(x)$ — функция от $\\theta$ при фиксированном $x$; ОМП = максимум $L$; ОМП инвариантна.<br><br><strong>Формально:</strong><br><strong>Функция правдоподобия</strong> $L : \\mathfrak{X}\\times\\Theta\\to\\mathbb{R}_+$: $$L(x;\\theta) = p_\\theta(x),\\quad x\\in\\mathfrak{X},\\ \\theta\\in\\Theta.$$ Для выборки $X_1,\\ldots,X_n$: $L(X;\\theta) = \\prod_{i=1}^n p_\\theta(X_i)$; лог-правдоподобие: $LL(X;\\theta) = \\sum_{i=1}^n \\log p_\\theta(X_i)$.<br><strong>Определение.</strong> Оценка $\\hat\\theta(X)$, максимизирующая $L(X;\\theta)$ по $\\theta$, называется <em>оценкой максимального правдоподобия (ОМП)</em>. ОМП находится из уравнения правдоподобия: $$U(X;\\theta) = \\frac{\\partial}{\\partial\\theta}\\log L(X;\\theta) = 0.$$ <strong>Свойство инвариантности:</strong> если $\\hat\\theta$ — ОМП параметра $\\theta$, то $g(\\hat\\theta)$ — ОМП для $g(\\theta)$."
+      },
+      {
+        q: "6. Регулярный эксперимент, информация Фишера, неравенство Рао–Крамера",
+        a: "<strong>TL;DR:</strong> Регулярность — (i)(ii)(iii). $I(\\theta) = E_\\theta U^2 = -E_\\theta \\partial^2_\\theta \\log L$. Для несмещённой оценки $D_\\theta\\delta \\geq 1/I(\\theta)$.<br><br><strong>Формально:</strong><br><strong>Определение.</strong> Эксперимент <em>регулярный</em>, если при каждом $\\theta\\in\\Theta$: $(i)$ $L(x;\\theta)$ непрерывна и непрерывно дифференцируема по $\\theta$; $(ii)$ $\\int_\\mathfrak{X} \\frac{\\partial}{\\partial\\theta}p_\\theta(x)\\,d\\mu = 0$ (дифф. под интегралом); $(iii)$ $0 &lt; I(\\theta) = E_\\theta(U(X;\\theta))^2 &lt; \\infty$, где $U(x;\\theta) = \\frac{\\partial}{\\partial\\theta}\\log L(x;\\theta)$ — <em>скоринговая функция</em>; $I(\\theta)$ — <em>информация Фишера</em>.<br>Аддитивность: для выборки $I_n(\\theta) = nI_1(\\theta)$.<br><strong>Теорема (Неравенство Рао–Крамера).</strong> Пусть эксперимент регулярен, $\\delta$ — разрешённая оценка. Тогда $$D_\\theta\\delta \\geq \\frac{(1+b'(\\theta))^2}{I(\\theta)},$$ где $b(\\theta) = E_\\theta\\delta - \\theta$ — смещение. Для несмещённой: $D_\\theta\\delta \\geq 1/I(\\theta)$."
+      },
+      {
+        q: "7. Теорема об асимптотической нормальности оценки максимального правдоподобия",
+        a: "<strong>TL;DR:</strong> В условиях регулярности и состоятельности ОМП: $\\sqrt{n}(\\hat\\theta - \\theta) \\Rightarrow \\mathcal{N}(0, I(\\theta)^{-1})$ — ОМП асимптотически эффективна.<br><br><strong>Формально:</strong><br><strong>Теорема (Асимптотическая нормальность ОМП).</strong> Пусть $X = (X_1, \\ldots, X_n)$ — выборка из регулярного семейства; $(i)$ выполнено условие двукратной дифференцируемости плотности под знаком интеграла; $(ii)$ $\\mathbb{I}(\\theta) = nI(\\theta)$ — информационная матрица; $(iii)$ ОМП $\\hat\\theta$ состоятельна. Тогда $$n^{1/2}(\\hat\\theta - \\theta) \\Rightarrow \\mathcal{N}(0, I(\\theta)^{-1}).$$ В условиях теоремы ОМП является <em>асимптотически эффективной</em> (предельная дисперсия достигает нижней границы Рао–Крамера).<br><em>Идея:</em> ЦПТ для скоринга $n^{-1/2}U(X;\\theta) \\Rightarrow \\mathcal{N}(0, I(\\theta))$ + разложение Тейлора $U(\\hat\\theta) = 0$: $n^{1/2}(\\hat\\theta-\\theta) \\approx I^{-1}\\cdot n^{-1/2}U$."
+      }
+    ],
+    "Доверительное оценивание": [
+      {
+        q: "8. Доверительное множество и интервал. Метод построения через генератор",
+        a: "<strong>TL;DR:</strong> ДИ — статистика $[T_1, T_2]$ накрывающая $\\theta$ с вероятностью $\\geq 1-\\alpha$; строится через генератор $G(X,\\theta)$ с распределением, не зависящим от $\\theta$.<br><br><strong>Формально:</strong><br><strong>Определение.</strong> Статистика $\\hat\\Theta : \\mathfrak{X}\\to\\mathbb{R}^2$ такая, что $$P_\\theta(\\theta\\in[T_1(X), T_2(X)]) \\geq 1 - \\alpha\\quad \\text{при любом}\\quad\\theta\\in\\Theta,$$ называется <em>доверительным интервалом</em> параметра $\\theta$ уровня доверия $1-\\alpha$.<br><strong>Метод генератора.</strong> Пусть $G(X,\\theta)$ — функция параметра и наблюдений, такая что: (1) распределение $G(X,\\theta)$ не зависит от $\\theta$; (2) $\\exists I_\\alpha : P_\\theta(G(X,\\theta)\\in I_\\alpha) \\geq 1-\\alpha$ и $\\hat\\Theta = \\{\\theta : G(X,\\theta)\\in I_\\alpha\\}$ — интервал. Тогда $\\hat\\Theta$ — ДИ уровня $1-\\alpha$. Функция $G(X,\\theta)$ называется <em>генератором</em> доверительного интервала."
+      },
+      {
+        q: "9. Доверительные интервалы для среднего и дисперсии нормального распределения",
+        a: "<strong>TL;DR:</strong> Для $a$: генератор $\\sqrt{n-1}(\\bar X - a)/s \\sim S_{n-1}$, ДИ $\\bar X \\pm t_\\alpha s/\\sqrt{n-1}$. Для $\\sigma^2$: генератор $ns^2/\\sigma^2 \\sim \\chi^2_{n-1}$, ДИ $[ns^2/x_{2,\\alpha},\\, ns^2/x_{1,\\alpha}]$.<br><br><strong>Формально:</strong><br>Пусть $X_1,\\ldots,X_n$ — выборка из $\\mathcal{N}(a,\\sigma^2)$.<br><strong>ДИ для $a$ (уровень $1-\\alpha$):</strong> используем $G = \\sqrt{n-1}(\\bar X - a)/s \\sim S_{n-1}$ (лемма Фишера, п.4); $t_\\alpha : S_{n-1}(t_\\alpha) = 1-\\alpha/2$. ДИ: $$[\\bar X - t_\\alpha s/\\sqrt{n-1},\\ \\bar X + t_\\alpha s/\\sqrt{n-1}].$$<strong>ДИ для $\\sigma^2$ (уровень $1-\\alpha$):</strong> используем $G = ns^2/\\sigma^2 \\sim \\chi^2_{n-1}$ (лемма Фишера, п.3); $x_{1,\\alpha}, x_{2,\\alpha} : K_{n-1}(x_{1,\\alpha}) = \\alpha/2$, $K_{n-1}(x_{2,\\alpha}) = 1-\\alpha/2$. ДИ: $$[ns^2/x_{2,\\alpha},\\ ns^2/x_{1,\\alpha}].$$"
+      },
+      {
+        q: "10. Асимптотический доверительный интервал на основе асимптотически нормальной оценки",
+        a: "<strong>TL;DR:</strong> Если $\\sqrt{n}(\\hat\\theta - \\theta) \\Rightarrow \\mathcal{N}(0,\\sigma^2(\\theta))$ и $\\sigma^2(\\hat\\theta)$ состоятельна, то АДИ: $\\hat\\theta \\pm x_{\\alpha/2}\\sigma(\\hat\\theta)/\\sqrt{n}$.<br><br><strong>Формально:</strong><br><strong>Определение.</strong> Статистика $\\hat\\Theta_n = [T_{1n}(X), T_{2n}(X)]$, удовлетворяющая $$\\lim_{n\\to\\infty}P_\\theta(\\theta\\in[T_{1n}, T_{2n}]) \\geq 1-\\alpha\\quad \\forall\\theta,$$ называется <em>асимптотическим доверительным интервалом (АДИ)</em>.<br><strong>Метод на базе АН-оценки.</strong> Из $\\sqrt{n}(\\hat\\theta - \\theta) \\Rightarrow \\mathcal{N}(0, \\sigma^2(\\theta))$ и состоятельности $\\sigma(\\hat\\theta) \\to \\sigma(\\theta)$: $$\\frac{\\sqrt{n}(\\hat\\theta - \\theta)}{\\sigma(\\hat\\theta)} \\Rightarrow \\mathcal{N}(0,1).$$ Выбираем $x_{\\alpha/2} : \\Phi(x_{\\alpha/2}) = 1-\\alpha/2$. АДИ: $$[\\hat\\theta - x_{\\alpha/2}\\sigma(\\hat\\theta)/\\sqrt{n},\\ \\hat\\theta + x_{\\alpha/2}\\sigma(\\hat\\theta)/\\sqrt{n}].$$<strong>На базе ОМП:</strong> $\\sigma^2(\\theta) = 1/I(\\theta)$, АДИ: $[\\hat\\theta \\pm x_{\\alpha/2}/\\sqrt{nI(\\hat\\theta)}]$."
+      },
+      {
+        q: "11. Маргинальные и совместные асимптотические ДИ. Методы Шеффе и Бонферрони",
+        a: "<strong>TL;DR:</strong> Эллипсоид: $n(\\hat\\theta-\\theta)'\\hat\\Sigma^{-1}(\\hat\\theta-\\theta) \\leq x_\\alpha$ через $\\chi^2_d$. Шеффе — совместные для всех линейных функций. Бонферрони: уровень $1-\\alpha/k$ для каждого из $k$ интервалов.<br><br><strong>Формально:</strong><br>Если $\\sqrt{n}(\\hat\\theta - \\theta) \\Rightarrow \\mathcal{N}(0,\\Sigma(\\theta))$, то $n(\\hat\\theta-\\theta)'\\Sigma^{-1}(\\theta)(\\hat\\theta-\\theta) \\Rightarrow \\chi^2_d$. Асимптотическое доверительное множество уровня $1-\\alpha$: $$\\hat\\Theta = \\{\\theta : (\\hat\\theta-\\theta)'\\hat\\Sigma^{-1}(\\hat\\theta-\\theta) \\leq x_\\alpha/n\\},$$ $x_\\alpha : K_d(x_\\alpha) = 1-\\alpha$ — эллипсоид.<br><strong>Метод Шеффе.</strong> Для $L_B = \\{\\psi = C'\\vartheta_B\\}$ ($q$-мерное пространство ДНО-функций): $$\\mathbb{P}_\\theta(\\hat\\psi - \\hat\\sigma_\\psi(x_\\alpha/n)^{1/2} \\leq \\psi \\leq \\hat\\psi + \\hat\\sigma_\\psi(x_\\alpha/n)^{1/2},\\ \\forall\\psi\\in L_B) \\to 1-\\alpha.$$<strong>Метод Бонферрони.</strong> Строим ДИ уровня $1-\\alpha/k$ для каждой из $k$ функций. По неравенству Буля их одновременная вероятность $\\geq 1-\\alpha$."
+      }
+    ],
+    "Проверка гипотез": [
+      {
+        q: "12. Постановка задачи проверки гипотез. Таблица ошибок. Критерий и мощность",
+        a: "<strong>TL;DR:</strong> $H_0 : \\theta\\in\\Theta_0$ vs $H_A : \\theta\\in\\Theta_A$; ошибки I (отвергли верную) и II (приняли неверную) рода; критерий $\\phi : \\mathfrak{X}\\to[0,1]$; мощность $b_\\phi(\\theta) = E_\\theta\\phi$.<br><br><strong>Формально:</strong><br><strong>Определение.</strong> <em>Статистической гипотезой</em> называется утверждение $H : \\theta\\in\\Theta^*\\subseteq\\Theta$. Простая: $H_0 : \\theta = \\theta^*$. Сложная — остальные.<br>Постановка: основная $H_0 : \\theta\\in\\Theta_0$, альтернатива $H_A : \\theta\\in\\Theta_A$, $\\Theta_0\\cap\\Theta_A = \\emptyset$.<br>Ошибки: I рода — отвергнуть $H_0$ при её справедливости; II рода — принять $H_0$ при справедливости $H_A$.<br><strong>Определение.</strong> <em>Статистическим критерием</em> называется статистика $\\phi : \\mathfrak{X}\\to[0,1]$ — вероятность отвергнуть $H_0$. <em>Мощность:</em> $b_\\phi(\\theta) = E_\\theta\\phi(X)$, $\\theta\\in\\Theta_A$. <em>Уровень значимости</em> $\\alpha$ ограничивает $P_\\theta(\\text{ошибки I рода}) = E_\\theta\\phi$, $\\theta\\in\\Theta_0$. Критерий <em>несмещённый</em>, если $\\sup_{\\Theta_0} b_\\phi \\leq \\inf_{\\Theta_A} b_\\phi$."
+      },
+      {
+        q: "13. Проверка гипотез о параметрах нормального распределения (одна и две выборки)",
+        a: "<strong>TL;DR:</strong> $t$-тест согласия: $T = \\sqrt{n-1}\\bar X/s \\sim S_{n-1}$ при $H_0 : a=0$. Двухвыборочный $t$-тест: $T \\sim S_{n+k-2}$ при $H_0 : a_1=a_2$. $F$-тест: $V = ns_x^2/(ks_y^2) \\sim F_{n-1,k-1}$ при $H_0 : \\sigma_1^2=\\sigma_2^2$.<br><br><strong>Формально:</strong><br><strong>t-тест согласия</strong> ($X_1,\\ldots,X_n \\sim \\mathcal{N}(a,\\sigma^2)$, $H_0 : a=0$, $H_A : a\\neq 0$): $$T(X) = \\sqrt{n-1}\\frac{\\bar X}{s} \\sim S_{n-1}\\text{ при }H_0.$$ Критерий отвергает $H_0$ при $|T| &gt; t_\\alpha$ ($S_{n-1}(t_\\alpha) = 1-\\alpha/2$).<br><strong>t-тест однородности</strong> ($\\mathcal{N}(a,\\sigma^2)$ и $\\mathcal{N}(b,\\sigma^2)$, $H_0 : a=b$): $$T = \\sqrt{\\frac{nk(n+k-2)}{k+n}}\\frac{\\bar X - \\bar Y}{\\sqrt{ns_x^2 + ks_y^2}} \\sim S_{n+k-2}\\text{ при }H_0.$$<strong>F-тест равенства дисперсий</strong> ($H_0 : \\sigma_1^2 = \\sigma_2^2$): $$V(X) = \\frac{ns_x^2}{ks_y^2} \\sim F_{n-1,k-1}\\text{ при }H_0.$$"
+      },
+      {
+        q: "14. Простая гипотеза против простой альтернативы. Лемма Неймана–Пирсона",
+        a: "<strong>TL;DR:</strong> Для $H_0 : \\theta=\\theta_0$ vs $H_A : \\theta=\\theta_1$ наиболее мощный критерий строится через $LR(X) = L(X;\\theta_1)/L(X;\\theta_0)$.<br><br><strong>Формально:</strong><br><strong>Статистика отношения правдоподобия:</strong> $$LR(X, \\theta_1, \\theta_0) = \\frac{L(X;\\theta_1)}{L(X;\\theta_0)} = \\frac{p_{\\theta_1}(X)}{p_{\\theta_0}(X)}.$$<strong>Теорема (Лемма Неймана–Пирсона).</strong> $(i)$ Существует наиболее мощный критерий уровня значимости $\\alpha$. $(ii)$ Данный критерий: $$\\phi(x) = \\begin{cases} 1, & LR(x) &gt; c; \\\\ p, & LR(x) = c; \\\\ 0, & LR(x) &lt; c, \\end{cases}$$ где $c$ и $p\\in[0,1]$ находятся из условия $E_{\\theta_0}\\phi(X) = P_{\\theta_0}(LR &gt; c) + p\\,P_{\\theta_0}(LR = c) = \\alpha$. $(iii)$ В области $LR(X) \\neq c$ наиболее мощный критерий определён однозначно."
+      },
+      {
+        q: "15. Непараметрические χ²-критерии Пирсона (простая и сложная гипотезы согласия)",
+        a: "<strong>TL;DR:</strong> $X^2 = \\sum(\\nu_i - np_{i0})^2/(np_{i0}) \\Rightarrow \\chi^2_{r-1}$ (простая); при оценке $d$ параметров — $\\chi^2_{r-d-1}$ (теорема Нейман–Фишера).<br><br><strong>Формально:</strong><br><strong>Критерий $\\chi^2$ для простой гипотезы</strong> $H_0 : p_1 = p_{10},\\ldots,p_r = p_{r0}$: $$X^2 = \\sum_{i=1}^r \\frac{(\\nu_i - np_{i0})^2}{np_{i0}} \\Rightarrow \\chi^2_{r-1}\\text{ при }H_0.$$ Критерий уровня $\\alpha$: $\\phi = 1$ при $X^2 &gt; x_\\alpha$, $x_\\alpha : K_{r-1}(x_\\alpha) = 1-\\alpha$.<br><strong>Теорема (Нейман–Фишера).</strong> При сложной гипотезе $H_0 : F\\in\\{F_\\theta, \\theta\\in\\Theta_0\\}$, $\\dim(\\Theta_0) = d$, при выполнении условий $(а)$–$(в)$ регулярности: $$\\widehat X^2 = \\sum_{j=1}^r \\frac{(\\nu_j - n\\hat p_j)^2}{n\\hat p_j} \\Rightarrow \\chi^2_{r-d-1}\\text{ при }H_0,$$ где $\\hat p_j = F_{\\hat\\theta}(I_j)$ — ОМП ожидаемых частот по группированным данным."
+      },
+      {
+        q: "16. Критерии Колмогорова, Колмогорова–Смирнова, Крамера–фон Мизеса",
+        a: "<strong>TL;DR:</strong> $D_n = \\sup|F_n - F_0|$, $\\sqrt{n}D_n \\Rightarrow \\mathcal{K}$. $\\omega^2_n = \\int(F_n-F_0)^2 dF_0$. Двухвыборочный КС: $D_{n,m} = \\sup|F_n - F_m|$, $\\sqrt{nm/(n+m)}D_{n,m} \\Rightarrow \\mathcal{K}$.<br><br><strong>Формально:</strong><br><strong>Критерий Колмогорова.</strong> $H_0 : F \\equiv F_0$ ($F_0$ непрерывна), статистика $D_n = \\sup_{x}|F_n(x) - F_0(x)|$. По теореме Колмогорова $\\sqrt{n}D_n \\Rightarrow \\mathcal{K}$ при $H_0$. Критерий: $\\phi = 1$ при $D_n &gt; x_\\alpha/\\sqrt{n}$, $x_\\alpha : K(x_\\alpha/\\sqrt{n}) = 1-\\alpha$.<br><strong>Критерий $\\omega^2$ Крамера–Мизеса–Смирнова.</strong> $$\\omega_n^2 = \\int(F_n(x) - F_0(x))^2 dF_0(x) = \\frac{1}{12n} + \\sum_{i=1}^n\\!\\left(F_0(X_{(i)}) - \\frac{2i-1}{2n}\\right)^{\\!2},$$ $T_n = n\\omega_n^2$ — статистика с табулированным распределением.<br><strong>Критерий КС однородности.</strong> $H_0 : F_1 \\equiv F_2$; $D_{n,m} = \\sup_x|F_n(x) - F_m(x)|$; $D(n,m) = \\sqrt{\\frac{nm}{n+m}}D_{n,m} \\Rightarrow \\mathcal{K}$."
+      }
+    ],
+    "Линейная регрессия": [
+      {
+        q: "17. Линейная регрессионная модель: ковариаты, регрессоры, оценка МНК, теорема Гаусса–Маркова",
+        a: "<strong>TL;DR:</strong> $E_\\theta(Y\\mid z) = X'\\beta$, $\\text{Var}(e) = \\sigma^2 I$; МНК: $\\hat\\beta = (XX')^{-1}XY$; $s^2 = SS_e/(n-r)$; Гаусс–Марков: МНК-оценка ДНО функции — НРМД в классе линейных несмещённых.<br><br><strong>Формально:</strong><br><strong>Статистическая модель:</strong> $Y = X'\\beta + e$, $E_\\theta e = 0$, $\\text{Var}_\\theta e = \\sigma^2 I$.<br><strong>МНК:</strong> $\\hat\\beta = (XX')^{-1}XY$ (из нормальных уравнений $XX'\\beta = XY$). Несмещённая оценка $\\sigma^2$: $s^2 = SS_e/(n-r)$, $SS_e = \\|Y - X'\\hat\\beta\\|^2$, $r = \\text{rk}(X)$.<br><strong>ДНО функция:</strong> $\\psi = C'\\beta$ допускает несмещённое оценивание (ДНО) $\\Leftrightarrow$ $C' = AX'$ для некоторой $A$; оценка $\\hat\\psi = C'\\hat\\beta$.<br><strong>Теорема (Гаусса–Маркова).</strong> В модели линейной регрессии любая ДНО-функция параметра $\\psi = C'\\beta$ имеет НРМД-оценку $$\\hat\\psi = C'\\hat\\beta$$ (единственную в классе линейных несмещённых). Доказательство не требует нормальности ошибок."
+      },
+      {
+        q: "18. Доверительное оценивание параметров линейной регрессии. Теорема о распределениях",
+        a: "<strong>TL;DR:</strong> При $e \\sim \\mathcal{N}(0,\\sigma^2 I)$: $\\hat\\psi \\sim \\mathcal{N}(\\psi, \\sigma^2 B)$, $(n-r)s^2/\\sigma^2 \\sim \\chi^2_{n-r}$, независимы. ДИ для скалярной $\\psi$: $\\hat\\psi \\pm x_\\alpha s\\sqrt{b}$.<br><br><strong>Формально:</strong><br><strong>Классические предположения:</strong> $Y \\sim \\mathcal{N}(X'\\beta, \\sigma^2 I)$ (эквивалентно: $e \\sim \\mathcal{N}(0,\\sigma^2 I)$).<br><strong>Теорема (Доверительного оценивания).</strong> Оценка $\\hat\\psi$ имеет $\\mathcal{N}(\\psi, \\Gamma_{\\hat\\psi})$-распределение и не зависит от $SS_e/\\sigma^2 \\sim \\chi^2_{n-r}$. Здесь $\\Gamma_{\\hat\\psi} = \\sigma^2 C'(XX')^{-1}C = \\sigma^2 B$.<br>Для скалярной ДНО функции $\\psi = C'\\beta$ ($q=1$): $b = C'(XX')^{-1}C$, $(\\hat\\psi - \\psi)/(s\\sqrt{b}) \\sim S_{n-r}$. <strong>ДИ уровня $1-\\alpha$:</strong> $$\\psi = \\hat\\psi \\pm x_\\alpha s\\sqrt{b},$$ $x_\\alpha : S_{n-r}(x_\\alpha) = 1-\\alpha/2$."
+      },
+      {
+        q: "19. Доверительный эллипсоид и совместные доверительные интервалы в линейной регрессии",
+        a: "<strong>TL;DR:</strong> $(\\hat\\psi - \\psi)'B^{-1}(\\hat\\psi - \\psi)/(qs^2) \\sim F_{q,n-r}$; эллипсоид $A_\\alpha$; метод Шеффе даёт совместные ДИ.<br><br><strong>Формально:</strong><br>Из $\\hat\\psi \\sim \\mathcal{N}(\\psi, \\sigma^2 B)$ и независимости от $s^2$: $$\\frac{(\\hat\\psi - \\psi)'B^{-1}(\\hat\\psi - \\psi)}{qs^2} \\sim F_{q,n-r}.$$ <strong>Доверительный эллипсоид уровня $1-\\alpha$:</strong> $$A_\\alpha = \\{x : (x - \\hat\\psi)'B^{-1}(x - \\hat\\psi) \\leq qs^2 x_\\alpha\\},$$ $x_\\alpha : F_{q,n-r}(x_\\alpha) = 1-\\alpha$.<br><strong>Метод Шеффе (совместные ДИ).</strong> Для $q$-мерного пространства $L_q$ ДНО-функций: $$\\mathbb{P}_\\theta(\\hat\\psi - x_\\alpha\\hat\\sigma_{\\hat\\psi} \\leq \\psi \\leq \\hat\\psi + x_\\alpha\\hat\\sigma_{\\hat\\psi},\\ \\forall\\psi\\in L_q) = 1-\\alpha,$$ где $x_\\alpha = (qt_\\alpha)^{1/2}$, $t_\\alpha$ — квантиль $F_{q,n-r}$.<br><strong>Метод Бонферрони:</strong> уровень $1-\\alpha/q$ для каждого из $q$ интервалов."
+      },
+      {
+        q: "20. Проверка гипотез в линейной регрессии. F-критерий. Две формы статистики",
+        a: "<strong>TL;DR:</strong> $H_0 : \\psi = 0$; $\\mathbb{F} = \\hat\\psi'B^{-1}\\hat\\psi/(qs^2) = SS_H/q\\,/\\,SS_e/(n-r) \\sim F_{q,n-r}$ при $H_0$; при альтернативе — нецентральное $F$.<br><br><strong>Формально:</strong><br>ДНО функция параметра $\\psi = C'\\beta$; гипотеза $H_0 : \\psi = 0$.<br><strong>F-статистика (две формы):</strong> $$\\mathbb{F} = \\frac{\\hat\\psi'B^{-1}\\hat\\psi}{qs^2} = \\frac{SS_H/q}{SS_e/(n-r)},$$ где $SS_H = SS(\\hat\\beta_H) - SS(\\hat\\beta)$ (прирост суммы квадратов от ограничения $\\psi=0$), $SS_e = SS(\\hat\\beta) = s^2(n-r)$.<br><strong>Распределение при $H_0$:</strong> $\\mathbb{F} \\sim F_{q,n-r}$.<br><strong>Распределение при альтернативе</strong> $\\psi = \\psi_0$: нецентральное $F_{\\nu,q,n-r}$, $\\nu_{nc} = \\psi_0'B^{-1}\\psi_0/s^2$.<br><strong>Мощность:</strong> $\\text{pwr}(\\nu_{nc}) = 1 - F_{\\nu_{nc},q,n-r}(x_\\alpha)$."
+      }
+    ],
+    "Дисперсионный анализ (ANOVA)": [
+      {
+        q: "21. Однофакторная ANOVA: модель, параметризация через главные эффекты",
+        a: "<strong>TL;DR:</strong> $E(Y_{ij}) = \\eta_i = \\mu + \\alpha_i$, $\\sum v_i\\alpha_i = 0$; оценки $\\hat\\eta_i = \\bar Y_{i+}$.<br><br><strong>Формально:</strong><br><strong>Модель:</strong> $E_\\theta Y_{ij} = \\eta_i$, $j = 1,\\ldots,n_i$, $i = 1,\\ldots,d$; $Y_{ij} \\sim \\mathcal{N}(\\eta_i, \\sigma^2)$ независимые.<br>Оценка: $\\hat\\eta_i = \\bar Y_{i+} = \\sum_j Y_{ij}/n_i$; $\\hat\\eta_1,\\ldots,\\hat\\eta_d$ независимы, $D\\hat\\eta_i = \\sigma^2/n_i$.<br><strong>Параметризация через сравнения.</strong> Выбираем веса $\\{v_i\\} : v_i\\geq 0$, $\\sum v_i = 1$: $$\\eta_i = \\mu + \\alpha_i, \\quad \\alpha_* = \\sum_{i=1}^d v_i\\alpha_i = 0,$$ где $\\mu = \\eta_* = \\sum v_i\\eta_i$ — взвешенное среднее; $\\alpha_i = \\eta_i - \\eta_*$ — <em>главные эффекты</em>.<br><strong>Гипотеза однородности:</strong> $$H_0 : \\eta_1 = \\ldots = \\eta_d \\quad\\Leftrightarrow\\quad H_0 : \\alpha_1 = \\ldots = \\alpha_d = 0.$$"
+      },
+      {
+        q: "22. Однофакторная ANOVA: F-критерий, ANOVA-таблица, метод Шеффе",
+        a: "<strong>TL;DR:</strong> $\\mathbb{F} = SS_H/(d-1)\\,/\\,SS_e/(n-d) \\sim F_{d-1,n-d}$ при $H_0$; Шеффе даёт совместные ДИ для всех сравнений.<br><br><strong>Формально:</strong><br><strong>Статистика F-критерия:</strong> $$\\mathbb{F} = \\frac{SS_H/(d-1)}{SS_e/(n-d)},$$ где $SS_H = \\sum_i n_i(\\bar Y_{i+} - \\bar Y_{++})^2$ (между группами), $SS_e = \\sum_{i,j}(Y_{ij} - \\bar Y_{i+})^2$ (внутри групп). При $H_0$: $\\mathbb{F} \\sim F_{d-1,n-d}$; при альтернативе — нецентральное $F$ с $\\nu = \\sum n_i(\\eta_i - \\bar\\eta)^2$.<br>ANOVA-таблица: SS между ($d-1$ ст.св.) + SS внутри ($n-d$) = SS общая ($n-1$).<br><strong>Метод Шеффе.</strong> Совместные ДИ уровня $1-\\alpha$ для всех сравнений $\\psi = \\sum c_i\\eta_i$ ($\\sum c_i = 0$): $$[\\hat\\psi \\pm \\sqrt{x_\\alpha(d-1)}\\,\\hat\\sigma_{\\hat\\psi}],$$ $x_\\alpha : F_{d-1,n-d}(x_\\alpha) = 1-\\alpha$."
+      },
+      {
+        q: "23. Двухфакторная ANOVA: модель, параметризация через главные эффекты и взаимодействия",
+        a: "<strong>TL;DR:</strong> $\\eta_{ij} = \\mu + \\alpha_i^{(1)} + \\alpha_j^{(2)} + \\alpha_{ij}^{(12)}}$; ограничения: $\\alpha_{i*}^{(12)} = 0$, $\\alpha_{*j}^{(12)} = 0$; аддитивная модель при $\\alpha_{ij}^{(12)} = 0$.<br><br><strong>Формально:</strong><br><strong>Модель:</strong> $E(Y_{ijk}) = \\eta_{ij}$, $i=1,\\ldots,d_1$, $j=1,\\ldots,d_2$, $k=1,\\ldots,n_{ij}$; $Y_{ijk} \\sim \\mathcal{N}(\\eta_{ij},\\sigma^2)$.<br><strong>Параметризация.</strong> Веса $\\{v_i\\} : \\sum v_i=1$, $\\{w_j\\} : \\sum w_j=1$: $$\\eta_{ij} = \\mu + \\alpha_i^{(1)} + \\alpha_j^{(2)} + \\alpha_{ij}^{(12)},$$ где $\\mu = \\eta_{**}$; $\\alpha_i^{(1)} = \\eta_{i*} - \\eta_{**}$ — главные эффекты фактора 1; $\\alpha_j^{(2)} = \\eta_{*j} - \\eta_{**}$; $\\alpha_{ij}^{(12)} = \\eta_{ij} - \\eta_{i*} - \\eta_{*j} + \\eta_{**}$ — взаимодействия.<br><strong>Ограничения:</strong> $\\sum v_i\\alpha_i^{(1)}=0$; $\\sum w_j\\alpha_j^{(2)}=0$; $\\alpha_{i*}^{(12)}=0\\ \\forall i$; $\\alpha_{*j}^{(12)}=0\\ \\forall j$.<br><strong>Аддитивная модель</strong> при $H_{(12)} : \\alpha_{ij}^{(12)}=0$: $\\eta_{ij} = \\mu + \\alpha_i^{(1)} + \\alpha_j^{(2)}$, размерность $d_1+d_2-1$."
+      },
+      {
+        q: "24. Двухфакторная ANOVA: гипотезы, F-критерии, порядок проверки",
+        a: "<strong>TL;DR:</strong> Сначала $H_{(12)}$ (взаимодействия), потом $H_{(1)}, H_{(2)}$. $F \\sim F_{(d_1-1)(d_2-1),\\,n-d_1 d_2}$ для $H_{(12)}$. При $n_{ij}=1$ проверить $H_{(12)}$ невозможно.<br><br><strong>Формально:</strong><br><strong>Три гипотезы:</strong><br>$H_{(12)} : \\alpha_{ij}^{(12)} = 0\\ \\forall i,j$ — нет взаимодействий; число ст.св. $(d_1-1)(d_2-1)$.<br>$H_{(1)} : \\alpha_i^{(1)} = 0\\ \\forall i$ — нет влияния фактора 1; ст.св. $d_1-1$.<br>$H_{(2)} : \\alpha_j^{(2)} = 0\\ \\forall j$ — нет влияния фактора 2; ст.св. $d_2-1$.<br>Для проверки $H_{(12)}$ используют $\\mathbb{F}$-критерий: $$\\mathbb{F} \\sim F_{(d_1-1)(d_2-1),\\,n-d_1 d_2}\\text{ при }H_{(12)}.$$ При $n_{ij}=1$ проверка $H_{(12)}$ невозможна.<br><strong>Иерархия гипотез:</strong> 1) сначала $H_{(12)}$ (аддитивность); 2) при выполнении $H_{(12)}$ — $H_{(1)}$; 3) при $H_{(12)},H_{(1)},H_{(2)}$ — нет влияния обоих факторов. Без $H_{(12)}$ интерпретация $H_{(1)},H_{(2)}$ зависит от весов."
+      }
+    ]
+  };
+
+  // Автоматически создаём группу "all"
+  cardGroups.all = Object.keys(cardGroups)
+    .flatMap(topic => cardGroups[topic].map(card => ({ ...card, topic })));
+
+  // Глобальные переменные
+  let currentCards = [];
+  let currentIndex = 0;
+  let correctCount = 0;
+
+  function shuffle(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+  }
+
+  function saveProgress() {
+    const data = { cards: currentCards, index: currentIndex, correct: correctCount };
+    localStorage.setItem('stat-cards-session', JSON.stringify(data));
+  }
+
+  function loadProgress() {
+    const saved = localStorage.getItem('stat-cards-session');
+    if (!saved) return false;
+    try {
+      const data = JSON.parse(saved);
+      currentCards = data.cards;
+      currentIndex = data.index;
+      correctCount = data.correct;
+      if (currentCards.length > 0 && currentIndex < currentCards.length) {
+        showScreen('screen-card');
+        updateProgress();
+        showCard();
+        return true;
+      }
+    } catch (e) {
+      console.warn("Не удалось загрузить прогресс", e);
+    }
+    return false;
+  }
+
+  function startSession(topicKey) {
+    const rawCards = cardGroups[topicKey] || [];
+    if (rawCards.length === 0) return;
+    currentCards = shuffle(rawCards);
+    currentIndex = 0;
+    correctCount = 0;
+    saveProgress();
+    showScreen('screen-card');
+    updateProgress();
+    showCard();
+  }
+
+  function updateProgress() {
+    const total = currentCards.length;
+    const current = currentIndex + 1;
+    document.getElementById('progress').textContent = `Вопрос ${current} из ${total}`;
+  }
+
+  function showCard() {
+    if (currentIndex >= currentCards.length) {
+      showSummary();
+      return;
+    }
+    const card = currentCards[currentIndex];
+    document.getElementById('question').textContent = card.q;
+    document.getElementById('answer').innerHTML = '';
+    document.getElementById('answer').style.display = 'none';
+    MathJax.typesetClear();
+    MathJax.typeset();
+  }
+
+  function toggleAnswer() {
+    const answerEl = document.getElementById('answer');
+    const card = currentCards[currentIndex];
+    if (answerEl.style.display === 'none') {
+      answerEl.innerHTML = card.a;
+      answerEl.style.display = 'block';
+      MathJax.typeset();
+    } else {
+      answerEl.style.display = 'none';
+    }
+  }
+
+  function handleResponse(isCorrect) {
+    if (isCorrect) {
+      correctCount++;
+      const cardEl = document.querySelector('.card');
+      if (cardEl) {
+        const cardRect = cardEl.getBoundingClientRect();
+        const message = document.createElement('div');
+        message.textContent = "Дальше меньше, братишка. Только назад!";
+        message.style.cssText = `
+          position: fixed;
+          left: ${cardRect.left + cardRect.width / 2}px;
+          top: ${cardRect.top - 20}px;
+          transform: translateX(-50%);
+          background: #34c759;
+          color: white;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-weight: bold;
+          font-size: 14px;
+          z-index: 1000;
+          opacity: 0;
+          animation: fadeInOut 3s forwards;
+          white-space: nowrap;
+          pointer-events: none;
+        `;
+        document.body.appendChild(message);
+        setTimeout(() => { if (message.parentNode) message.parentNode.removeChild(message); }, 2000);
+      }
+    } else {
+      const poop = document.createElement('div');
+      poop.className = 'poop';
+      poop.innerHTML = '💩';
+      const cardRect = document.querySelector('.card').getBoundingClientRect();
+      poop.style.left = `${cardRect.left + cardRect.width / 2}px`;
+      poop.style.top  = `${cardRect.top  + cardRect.height / 2}px`;
+      document.body.appendChild(poop);
+      setTimeout(() => poop.remove(), 1200);
+    }
+
+    currentIndex++;
+    saveProgress();
+
+    if (currentIndex < currentCards.length) {
+      updateProgress();
+      showCard();
+    } else {
+      showSummary();
+    }
+  }
+
+  function showSummary() {
+    const total = currentCards.length;
+    const percent = Math.round((correctCount / total) * 100);
+    document.getElementById('summary-text').innerHTML = `
+      🎯 Ты решил правильно: <strong>${correctCount} из ${total}</strong><br>
+      Это <strong>${percent}%</strong>!
+    `;
+    showScreen('screen-summary');
+    localStorage.removeItem('stat-cards-session');
+  }
+
+  function resetSession() {
+    localStorage.removeItem('stat-cards-session');
+    currentCards = [];
+    currentIndex = 0;
+    correctCount = 0;
+    showScreen('screen-select');
+  }
+
+  window.onload = () => {
+    if (!loadProgress()) {
+      showScreen('screen-select');
+    }
+  };
+</script>
+
+</body>
+</html>
